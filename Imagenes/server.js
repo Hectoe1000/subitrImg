@@ -112,6 +112,39 @@ app.post('/upload/:id', upload.single('imagen'), async (req, res) => {
   }
 });
 
+// RUTA: Subir imagen de una oferta
+app.post('/upload-oferta/:id', upload.single('imagen'), async (req, res) => {
+  const idOferta = parseInt(req.params.id);
+
+  if (isNaN(idOferta)) return res.status(400).json({ mensaje: 'ID inválido' });
+  if (!req.file) return res.status(400).json({ mensaje: 'No se envió ninguna imagen' });
+
+  try {
+    const resultCloudinary = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'ofertas' },
+        (error, result) => {
+          if (result) resolve(result);
+          else reject(error);
+        }
+      );
+      streamifier.createReadStream(req.file.buffer).pipe(stream);
+    });
+
+    const pool = await poolPromise;
+    await pool.request()
+      .input('url', sql.VarChar, resultCloudinary.secure_url)
+      .input('id', sql.Int, idOferta)
+      .query('UPDATE ofertas SET images_ofertas = @url WHERE id = @id');
+
+    res.json({ mensaje: 'Imagen subida y guardada', url: resultCloudinary.secure_url });
+  } catch (err) {
+    console.error('❌ Error al subir imagen:', err);
+    res.status(500).json({ mensaje: 'Error en servidor', error: err.message });
+  }
+});
+
+
 
 // Iniciar el servidor
 app.listen(PORT, () => {
